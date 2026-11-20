@@ -5,7 +5,7 @@
 The plugin folder probably kept permissions from your user profile that Jellyfin's service account cannot read (Jellyfin's log shows `UnauthorizedAccessException` on `meta.json`). Reset them, as administrator:
 
 ```powershell
-icacls 'C:\ProgramData\Jellyfin\Server\plugins\MediaDownloader_1.6.0.0' /reset /T
+icacls 'C:\ProgramData\Jellyfin\Server\plugins\MediaDownloader_1.6.1.0' /reset /T
 Start-Service JellyfinServer
 ```
 
@@ -21,6 +21,10 @@ Start-Service JellyfinServer
 - For YouTube, try another **YouTube player types** value (`default,web_safari` or `default,mweb`).
 - Make sure **Use deno** is on.
 - Sites that need an account, age checks or a subscription may not work.
+
+## "Saved without subtitles" or "HTTP Error 429: Too Many Requests"
+
+The site (usually YouTube) refused the subtitles because too many were asked for in a short time. Since 1.6.1 the video is then downloaded without subtitles and the download shows a yellow note. To get subtitles, try again later, or clear **Settings › Subtitle languages** if you do not need them.
 
 ## "Jellyfin's service account could not ..." when downloading, deleting or moving
 

@@ -123,7 +123,7 @@ function renderJobs(view, jobs) {
             lookupItems(view, job);
         }
         if (job.Error) {
-            card.appendChild(el('div', job.Error, 'color:#e57373;margin-top:.3em;word-break:break-word'));
+            card.appendChild(el('div', job.Error, (job.State === 'Done' ? 'color:#ffd54f' : 'color:#e57373') + ';margin-top:.3em;word-break:break-word'));
         }
         if (job.State === 'Failed' && job.Log && job.Log.length) {
             const details = el('details', null, 'margin-top:.3em');

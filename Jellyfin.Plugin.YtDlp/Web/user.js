@@ -1,7 +1,7 @@
 (function () {
     'use strict';
 
-    const VERSION = '1.6.0';
+    const VERSION = '1.6.1';
     const base = location.pathname.replace(/\/MediaDownloader\/?$/i, '');
     let token = '';
     let me = null;
@@ -445,7 +445,7 @@
                 }
             }
             if (waiting) lookupItems(job);
-            if (job.Error) card.appendChild(el('div', job.Error, 'color:var(--bad);margin-top:.3em;word-break:break-word'));
+            if (job.Error) card.appendChild(el('div', job.Error, 'color:var(--' + (job.State === 'Done' ? 'warn' : 'bad') + ');margin-top:.3em;word-break:break-word'));
             box.appendChild(card);
         }
     }

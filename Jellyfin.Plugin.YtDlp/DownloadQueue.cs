@@ -107,6 +107,9 @@ public class DownloadJob
     /// <summary>Gets or sets the error.</summary>
     public string Error { get; set; } = string.Empty;
 
+    /// <summary>Gets or sets a note about a finished download that worked only in part (for example without subtitles).</summary>
+    public string Warning { get; set; } = string.Empty;
+
     /// <summary>Gets the last lines of yt-dlp's output.</summary>
     public List<string> Log { get; } = new();
 
@@ -402,33 +405,21 @@ public class DownloadQueue
         Directory.CreateDirectory(job.Request.TargetFolder);
         CheckWritable(job.Request.TargetFolder);
 
-        var psi = new ProcessStartInfo(program)
-        {
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8
-        };
-        psi.Environment["PYTHONIOENCODING"] = "utf-8";
-        foreach (var arg in BuildArguments(job.Request, config, deno))
-        {
-            psi.ArgumentList.Add(arg);
-        }
+        var exitCode = await RunYtDlpAsync(job, program, config, deno, true).ConfigureAwait(false);
 
-        _logger.LogInformation("yt-dlp: {Url} -> {Folder} ({Kind})", job.Request.Url, job.Request.TargetFolder, job.Request.Kind);
-        using var process = Process.Start(psi) ?? throw new InvalidOperationException("yt-dlp did not start");
-        job.Process = process;
-        if (job.CancelRequested)
+        // Sites (YouTube above all) often refuse subtitles with "429 Too Many Requests", and yt-dlp then fails the
+        // whole video. The video matters more than its subtitles: try once more without them.
+        if (exitCode != 0 && !job.CancelRequested && SubtitlesFailed(job) && HasSubtitles(job.Request, config))
         {
-            process.Kill(true);
+            AddLog(job, "WARNING: the site refused the subtitles; downloading again without subtitles.");
+            _logger.LogInformation("yt-dlp: subtitles refused for {Url}; retrying without subtitles", job.Request.Url);
+            job.Percent = 0;
+            exitCode = await RunYtDlpAsync(job, program, config, deno, false).ConfigureAwait(false);
+            if (exitCode == 0)
+            {
+                job.Warning = "Saved without subtitles: the site refused them (too many requests). Try again later for subtitles.";
+            }
         }
-
-        var stdout = ReadLinesAsync(process.StandardOutput, job);
-        var stderr = ReadLinesAsync(process.StandardError, job);
-        await process.WaitForExitAsync().ConfigureAwait(false);
-        await Task.WhenAll(stdout, stderr).ConfigureAwait(false);
 
         foreach (var file in job.Files.ToList())
         {
@@ -441,11 +432,11 @@ public class DownloadQueue
         {
             job.State = JobState.Cancelled;
         }
-        else if (process.ExitCode == 0 || job.Files.Count > 0)
+        else if (exitCode == 0 || job.Files.Count > 0)
         {
             job.State = JobState.Done;
             job.Percent = 100;
-            if (process.ExitCode != 0)
+            if (exitCode != 0)
             {
                 job.Error = "Some items failed; see the log lines.";
             }
@@ -453,13 +444,17 @@ public class DownloadQueue
             {
                 job.Error = "Nothing new to download (already downloaded before).";
             }
+            else if (job.Warning.Length > 0)
+            {
+                job.Error = job.Warning;
+            }
         }
         else
         {
             job.State = JobState.Failed;
             lock (job.Log)
             {
-                job.Error = job.Log.LastOrDefault(l => l.Contains("ERROR", StringComparison.Ordinal)) ?? $"yt-dlp ended with code {process.ExitCode}";
+                job.Error = job.Log.LastOrDefault(l => l.Contains("ERROR", StringComparison.Ordinal)) ?? $"yt-dlp ended with code {exitCode}";
             }
         }
 
@@ -469,6 +464,51 @@ public class DownloadQueue
             _libraryManager.QueueLibraryScan();
         }
     }
+
+    private async Task<int> RunYtDlpAsync(DownloadJob job, string program, Configuration.PluginConfiguration config, string? deno, bool subtitles)
+    {
+        var psi = new ProcessStartInfo(program)
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8
+        };
+        psi.Environment["PYTHONIOENCODING"] = "utf-8";
+        foreach (var arg in BuildArguments(job.Request, config, deno, subtitles))
+        {
+            psi.ArgumentList.Add(arg);
+        }
+
+        _logger.LogInformation("yt-dlp: {Url} -> {Folder} ({Kind}{Subs})", job.Request.Url, job.Request.TargetFolder, job.Request.Kind, subtitles ? string.Empty : ", no subtitles");
+        using var process = Process.Start(psi) ?? throw new InvalidOperationException("yt-dlp did not start");
+        job.Process = process;
+        if (job.CancelRequested)
+        {
+            process.Kill(true);
+        }
+
+        var stdout = ReadLinesAsync(process.StandardOutput, job);
+        var stderr = ReadLinesAsync(process.StandardError, job);
+        await process.WaitForExitAsync().ConfigureAwait(false);
+        await Task.WhenAll(stdout, stderr).ConfigureAwait(false);
+        job.Process = null;
+        return process.ExitCode;
+    }
+
+    private static bool SubtitlesFailed(DownloadJob job)
+    {
+        lock (job.Log)
+        {
+            return job.Log.Any(l => l.Contains("ERROR", StringComparison.Ordinal)
+                && l.Contains("subtitles", StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    private static bool HasSubtitles(DownloadRequest request, Configuration.PluginConfiguration config) =>
+        request.Kind != DownloadKind.Music && (config.SubtitleLanguages ?? string.Empty).Trim().Length > 0;
 
     private static void CheckWritable(string folder)
     {
@@ -485,7 +525,7 @@ public class DownloadQueue
         }
     }
 
-    private List<string> BuildArguments(DownloadRequest request, Configuration.PluginConfiguration config, string? deno)
+    private List<string> BuildArguments(DownloadRequest request, Configuration.PluginConfiguration config, string? deno, bool subtitles)
     {
         var data = YtDlpBinary.DataFolder;
         var args = new List<string>
@@ -542,18 +582,18 @@ public class DownloadQueue
                 AddVideoFormat(args, request.MaxHeight, config);
                 var episode = Channel + "/Season " + Year + "/" + Channel + " - %(upload_date>%Y-%m-%d|0000-00-00)s - %(title).120B";
                 args.AddRange(new[] { "-o", episode + ".%(ext)s", "-o", "thumbnail:" + episode + "-thumb.%(ext)s" });
-                AddThumbnailAndSubs(args, config);
+                AddThumbnailAndSubs(args, config, subtitles);
                 break;
             case DownloadKind.Video:
                 AddVideoFormat(args, request.MaxHeight, config);
                 args.AddRange(new[] { "-o", Title + ".%(ext)s", "-o", "thumbnail:" + Title + "-poster.%(ext)s" });
-                AddThumbnailAndSubs(args, config);
+                AddThumbnailAndSubs(args, config, subtitles);
                 break;
             default:
                 AddVideoFormat(args, request.MaxHeight, config);
                 var movie = Title + " (" + Year + ")";
                 args.AddRange(new[] { "-o", movie + "/" + movie + ".%(ext)s", "-o", "thumbnail:" + movie + "/poster.%(ext)s" });
-                AddThumbnailAndSubs(args, config);
+                AddThumbnailAndSubs(args, config, subtitles);
                 break;
         }
 
@@ -584,13 +624,14 @@ public class DownloadQueue
         }
     }
 
-    private static void AddThumbnailAndSubs(List<string> args, Configuration.PluginConfiguration config)
+    private static void AddThumbnailAndSubs(List<string> args, Configuration.PluginConfiguration config, bool subtitles)
     {
         args.AddRange(new[] { "--write-thumbnail", "--convert-thumbnails", "jpg" });
         var langs = (config.SubtitleLanguages ?? string.Empty).Trim();
-        if (langs.Length > 0)
+        if (subtitles && langs.Length > 0)
         {
-            args.AddRange(new[] { "--write-subs", "--write-auto-subs", "--sub-langs", langs, "--convert-subs", "srt" });
+            // A short pause before each subtitle request makes "429 Too Many Requests" less likely.
+            args.AddRange(new[] { "--write-subs", "--write-auto-subs", "--sub-langs", langs, "--convert-subs", "srt", "--sleep-subtitles", "2" });
         }
     }
 

@@ -9,7 +9,7 @@ A Jellyfin plugin that downloads videos and audio from YouTube and about 1,800 o
 - **Menu link**: a "Media Downloader" link in Jellyfin's side menu for everyone. Nothing in Jellyfin's own files changes, so it stays after Jellyfin updates.
 - **No setup of tools**: the plugin downloads yt-dlp and deno itself (SHA-256 checked) and keeps them up to date every week. Jellyfin's own ffmpeg is used.
 
-Current version: **1.6.0.0**, for **Jellyfin 12.x** (target ABI 12.0.0.0). Tested on Jellyfin 12.4.0 on Windows 11; the code also supports Linux (x64, arm64, armv7) and macOS.
+Current version: **1.6.1.0**, for **Jellyfin 12.x** (target ABI 12.0.0.0). Tested on Jellyfin 12.4.0 on Windows 11; the code also supports Linux (x64, arm64, armv7) and macOS.
 
 ## Documents
 
@@ -23,9 +23,9 @@ Current version: **1.6.0.0**, for **Jellyfin 12.x** (target ABI 12.0.0.0). Teste
 
 ## Quick install
 
-1. Download `media-downloader_1.6.0.0.zip` from this repository's [Releases](../../releases).
+1. Download `media-downloader_1.6.1.0.zip` from this repository's [Releases](../../releases).
 2. Stop Jellyfin.
-3. Unpack the zip into a new folder `MediaDownloader_1.6.0.0` inside Jellyfin's `plugins` folder (on Windows `C:\ProgramData\Jellyfin\Server\plugins`).
+3. Unpack the zip into a new folder `MediaDownloader_1.6.1.0` inside Jellyfin's `plugins` folder (on Windows `C:\ProgramData\Jellyfin\Server\plugins`).
 4. Start Jellyfin. Open **Dashboard › Plugins**: "Media Downloader" is listed as Active, and **Media Downloader** appears in the dashboard menu.
 
 Full steps for every system: [docs/INSTALL.md](docs/INSTALL.md).

@@ -28,7 +28,7 @@ If yours is elsewhere: Dashboard › **Paths** shows the data folder; `plugins` 
 
 ## 3. Install
 
-Stop Jellyfin first, then make a folder named `MediaDownloader_<version>` (for example `MediaDownloader_1.6.0.0`) in the plugins folder and unpack the zip into it.
+Stop Jellyfin first, then make a folder named `MediaDownloader_<version>` (for example `MediaDownloader_1.6.1.0`) in the plugins folder and unpack the zip into it.
 
 ### Windows
 
@@ -36,8 +36,8 @@ In PowerShell **as administrator** (change the version and the zip's path):
 
 ```powershell
 Stop-Service JellyfinServer
-$dest = 'C:\ProgramData\Jellyfin\Server\plugins\MediaDownloader_1.6.0.0'
-Expand-Archive "$env:USERPROFILE\Downloads\media-downloader_1.6.0.0.zip" -DestinationPath $dest
+$dest = 'C:\ProgramData\Jellyfin\Server\plugins\MediaDownloader_1.6.1.0'
+Expand-Archive "$env:USERPROFILE\Downloads\media-downloader_1.6.1.0.zip" -DestinationPath $dest
 icacls $dest /reset /T
 Start-Service JellyfinServer
 ```
@@ -50,9 +50,9 @@ If Jellyfin runs as a tray app instead of a service, quit it from the tray inste
 
 ```bash
 sudo systemctl stop jellyfin
-sudo mkdir -p /var/lib/jellyfin/plugins/MediaDownloader_1.6.0.0
-sudo unzip media-downloader_1.6.0.0.zip -d /var/lib/jellyfin/plugins/MediaDownloader_1.6.0.0
-sudo chown -R jellyfin:jellyfin /var/lib/jellyfin/plugins/MediaDownloader_1.6.0.0
+sudo mkdir -p /var/lib/jellyfin/plugins/MediaDownloader_1.6.1.0
+sudo unzip media-downloader_1.6.1.0.zip -d /var/lib/jellyfin/plugins/MediaDownloader_1.6.1.0
+sudo chown -R jellyfin:jellyfin /var/lib/jellyfin/plugins/MediaDownloader_1.6.1.0
 sudo systemctl start jellyfin
 ```
 
@@ -60,8 +60,8 @@ sudo systemctl start jellyfin
 
 ```bash
 docker stop jellyfin
-mkdir -p /path/to/config/plugins/MediaDownloader_1.6.0.0
-unzip media-downloader_1.6.0.0.zip -d /path/to/config/plugins/MediaDownloader_1.6.0.0
+mkdir -p /path/to/config/plugins/MediaDownloader_1.6.1.0
+unzip media-downloader_1.6.1.0.zip -d /path/to/config/plugins/MediaDownloader_1.6.1.0
 docker start jellyfin
 ```
 
@@ -72,8 +72,8 @@ Make sure the files belong to the user the container runs as (the `PUID`/`PGID` 
 Quit Jellyfin, then:
 
 ```bash
-mkdir -p ~/.local/share/jellyfin/plugins/MediaDownloader_1.6.0.0
-unzip ~/Downloads/media-downloader_1.6.0.0.zip -d ~/.local/share/jellyfin/plugins/MediaDownloader_1.6.0.0
+mkdir -p ~/.local/share/jellyfin/plugins/MediaDownloader_1.6.1.0
+unzip ~/Downloads/media-downloader_1.6.1.0.zip -d ~/.local/share/jellyfin/plugins/MediaDownloader_1.6.1.0
 ```
 
 Start Jellyfin again.

@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.6.1.0
+- When a site refuses the subtitles (YouTube's "HTTP Error 429: Too Many Requests"), the video is downloaded again without subtitles instead of failing; the download shows a yellow note. Subtitle requests are spaced 2 seconds apart.
+
 ## 1.6.0.0
 - My folders tab on the users' page: make, rename, move and delete folders inside your own folders.
 - My files: move selected files to another of your folders (a film moves with its own folder and poster).
