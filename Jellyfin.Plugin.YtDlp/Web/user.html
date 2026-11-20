@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <title>Media Downloader</title>
+    <style>
+        :root { --bg: #101010; --card: #1c1c1c; --line: rgba(255,255,255,.12); --text: #eee; --dim: rgba(255,255,255,.65); --accent: #00a4dc; --ok: #81c784; --warn: #ffd54f; --bad: #e57373; }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+        header { display: flex; flex-wrap: wrap; align-items: center; gap: .6em 1.2em; padding: .8em 1em; background: #181818; border-bottom: 1px solid var(--line); }
+        header h1 { font-size: 1.2em; margin: 0; flex: 1 1 auto; }
+        header .who { color: var(--dim); font-size: .92em; }
+        a { color: #8fd3ff; }
+        main { max-width: 60em; margin: 0 auto; padding: 1em; }
+        .tabs { display: flex; flex-wrap: wrap; gap: .3em; border-bottom: 1px solid var(--line); margin-bottom: 1.2em; }
+        .tab { background: none; border: none; color: inherit; opacity: .7; padding: .7em 1em; font-size: 1em; cursor: pointer; border-bottom: 3px solid transparent; }
+        .tab:hover { opacity: 1; }
+        .tab.active { opacity: 1; border-bottom-color: var(--accent); font-weight: bold; }
+        .panel { display: none; }
+        .panel.active { display: block; }
+        label.field { display: block; margin-bottom: 1em; }
+        label.field > span { display: block; color: var(--dim); font-size: .9em; margin-bottom: .3em; }
+        input[type=text], input[type=url], input[type=password], select { width: 100%; padding: .65em .7em; font-size: 1em; color: var(--text); background: #262626; border: 1px solid var(--line); border-radius: 4px; }
+        input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 0; }
+        .check { display: flex; gap: .6em; align-items: center; margin-bottom: .8em; }
+        .check input { width: 1.2em; height: 1.2em; }
+        button { font: inherit; cursor: pointer; border-radius: 4px; border: 1px solid var(--line); background: #2c2c2c; color: var(--text); padding: .55em 1em; }
+        button:hover { background: #363636; }
+        button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: bold; width: 100%; padding: .75em; }
+        button.danger { background: #c62828; border-color: #c62828; color: #fff; }
+        .card { padding: .8em; margin-bottom: .8em; border-radius: 6px; background: var(--card); }
+        .bar { height: 8px; background: rgba(255,255,255,.15); border-radius: 4px; margin-top: .4em; overflow: hidden; }
+        .bar > div { height: 8px; background: var(--accent); }
+        .msg { padding: .6em .8em; border-radius: 4px; margin: -.4em 0 1.2em 0; word-break: break-word; display: none; }
+        .error { color: var(--bad); }
+        .dim { color: var(--dim); }
+        .row { display: flex; flex-wrap: wrap; gap: .8em; align-items: flex-end; margin-bottom: 1em; }
+        .row > label.field { margin: 0; flex: 1 1 12em; }
+        .tablewrap { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: .92em; }
+        th, td { text-align: left; padding: .45em .5em; border-bottom: 1px solid rgba(255,255,255,.08); vertical-align: top; }
+        th { color: var(--dim); font-weight: normal; white-space: nowrap; }
+        td.num { text-align: right; white-space: nowrap; }
+        .play { display: inline-block; margin: .4em 0; padding: .4em .9em; border-radius: 4px; background: var(--accent); color: #fff; text-decoration: none; font-weight: bold; }
+        #login { max-width: 24em; margin: 3em auto; }
+        .hidden { display: none !important; }
+        .tree { border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+        .tree .node { display: flex; align-items: center; gap: .6em; padding: .55em .7em; border-bottom: 1px solid rgba(255,255,255,.06); cursor: pointer; }
+        .tree .node:last-child { border-bottom: none; }
+        .tree .node:hover { background: rgba(255,255,255,.05); }
+        .tree .node.sel { background: rgba(0,164,220,.22); }
+        .tree .node .name { flex: 1 1 auto; word-break: break-word; }
+        .tree .node .meta { color: var(--dim); font-size: .85em; white-space: nowrap; }
+        .tools { display: flex; flex-wrap: wrap; gap: .6em; align-items: center; margin-bottom: .8em; }
+        .tools select { width: auto; max-width: 100%; flex: 1 1 14em; }
+        button:disabled { opacity: .45; cursor: default; }
+        @media (max-width: 600px) { main { padding: .8em 16px; } .tab { padding: .6em .7em; } }
+    </style>
+</head>
+<body>
+<header>
+    <h1>Media Downloader</h1>
+    <span class="who" id="who"></span>
+    <a id="openJellyfin" href="web/">Open Jellyfin</a>
+    <button type="button" id="signOut" class="hidden">Sign out</button>
+</header>
+<main>
+    <div id="loading" class="dim">Loading...</div>
+
+    <form id="login" class="hidden">
+        <p>Sign in with your Jellyfin account.</p>
+        <label class="field"><span>User name</span><input type="text" id="loginUser" autocomplete="username" required></label>
+        <label class="field"><span>Password</span><input type="password" id="loginPass" autocomplete="current-password"></label>
+        <button type="submit" class="primary">Sign in</button>
+        <div id="loginError" class="error" style="margin-top:.6em;"></div>
+    </form>
+
+    <div id="denied" class="card hidden"></div>
+
+    <div id="app" class="hidden">
+        <div class="tabs" role="tablist">
+            <button type="button" class="tab" data-tab="download" role="tab">Download</button>
+            <button type="button" class="tab" data-tab="jobs" role="tab">My downloads <span id="jobCount"></span></button>
+            <button type="button" class="tab" data-tab="files" role="tab">My files</button>
+            <button type="button" class="tab" data-tab="folders" role="tab">My folders</button>
+        </div>
+
+        <section class="panel" data-panel="download">
+            <p class="dim" style="margin-top:0;">Downloads from YouTube and the other sites yt-dlp supports (<a href="https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md" target="_blank" rel="noopener">list of supported sites</a>). Paste a link: it is checked first.</p>
+            <form id="downloadForm">
+                <label class="field"><span>Link to a video, playlist or channel page</span><input type="url" id="url" required placeholder="https://..."></label>
+                <div id="check" class="msg"></div>
+                <label class="field"><span>Save as</span>
+                    <select id="kind">
+                        <option value="Movie">Film: own folder "Title (Year)", poster, description</option>
+                        <option value="Episode">Series episode: Channel / Season YEAR / dated episode</option>
+                        <option value="Music">Music: audio only (M4A), Artist / Album</option>
+                        <option value="Video">Plain video file in the folder</option>
+                    </select>
+                </label>
+                <label class="field"><span>Folder</span><select id="folder"></select></label>
+                <label class="field"><span>New sub folder inside it (optional; made if it is not there)</span><input type="text" id="subFolder" placeholder="for example Cooking"></label>
+                <label class="field"><span>Highest quality</span>
+                    <select id="height">
+                        <option value="0">Best available</option>
+                        <option value="2160">2160p (4K)</option>
+                        <option value="1440">1440p</option>
+                        <option value="1080">1080p (Full HD)</option>
+                        <option value="720">720p</option>
+                        <option value="480">480p</option>
+                    </select>
+                </label>
+                <label class="check"><input type="checkbox" id="playlist"><span>Whole playlist or channel (otherwise only the one video)</span></label>
+                <label class="check"><input type="checkbox" id="skip" checked><span>Skip videos downloaded before</span></label>
+                <button type="submit" class="primary">Download</button>
+                <div id="formError" class="error" style="margin-top:.5em;"></div>
+            </form>
+        </section>
+
+        <section class="panel" data-panel="jobs">
+            <div style="margin-bottom:1em;"><button type="button" id="clearFinished">Remove finished from the list</button></div>
+            <div id="jobs"></div>
+        </section>
+
+        <section class="panel" data-panel="files">
+            <div style="margin-bottom:1em;"><button type="button" id="refreshFiles">Refresh</button> <span id="filesInfo" class="dim" style="margin-left:.8em;"></span></div>
+            <div id="drives"></div>
+            <div class="tablewrap"><table id="folders"></table></div>
+            <h3 style="margin:1.5em 0 .8em 0;">Files, biggest first</h3>
+            <div class="row">
+                <label class="field"><span>Show</span>
+                    <select id="filterWatch">
+                        <option value="all">All files</option>
+                        <option value="watched">Watched to the end</option>
+                        <option value="started">Started, not finished</option>
+                        <option value="unwatched">Not watched</option>
+                        <option value="unknown">Not in Jellyfin's library yet</option>
+                    </select>
+                </label>
+                <label class="field"><span>Name contains</span><input type="text" id="filterText"></label>
+            </div>
+            <div id="deleteTools" class="tools">
+                <button type="button" id="selectShown">Select all shown</button>
+                <button type="button" id="selectNone">Select none</button>
+                <button type="button" id="deleteSelected" class="danger">Delete selected</button>
+            </div>
+            <div class="tools">
+                <span class="dim">Move selected to</span>
+                <select id="moveTarget" aria-label="Folder to move the selected files to"></select>
+                <button type="button" id="moveSelected">Move</button>
+            </div>
+            <div id="deleteResult" style="margin-bottom:.8em;"></div>
+            <div class="tablewrap"><table id="files"></table></div>
+        </section>
+
+        <section class="panel" data-panel="folders">
+            <p class="dim" style="margin-top:0;">Organise your downloads in folders. Click a folder, then choose what to do with it. New downloads can go straight into any of these folders (Download › Folder).</p>
+            <div class="tools">
+                <button type="button" id="folderNew">New folder inside</button>
+                <button type="button" id="folderRename">Rename</button>
+                <button type="button" id="folderDelete" class="danger">Delete</button>
+                <button type="button" id="folderRefresh">Refresh</button>
+            </div>
+            <div class="tools">
+                <span class="dim">Move it into</span>
+                <select id="folderMoveTarget" aria-label="Folder to move the chosen folder into"></select>
+                <button type="button" id="folderMove">Move</button>
+            </div>
+            <div id="folderMsg" style="margin-bottom:.8em;"></div>
+            <div id="folderTree" class="tree"></div>
+            <p class="dim" style="font-size:.88em;">Jellyfin sees renamed and moved videos as new items, so their "watched" marks may start again. It takes a minute or two for Jellyfin to show the changes.</p>
+        </section>
+    </div>
+</main>
+<script src="MediaDownloader/app.js"></script>
+</body>
+</html>

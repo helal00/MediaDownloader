@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Media Downloader</title>
+</head>
+<body>
+<div id="YtDlpPage" data-role="page" class="page type-interior pluginConfigurationPage"
+     data-require="emby-input,emby-button,emby-select,emby-checkbox,emby-textarea" data-controller="__plugin/YtDlpJs">
+    <style>
+        #YtDlpPage .md-tabs { display: flex; flex-wrap: wrap; gap: .3em; border-bottom: 1px solid rgba(255,255,255,.15); margin: .5em 0 1.2em 0; }
+        #YtDlpPage .md-tab { background: none; border: none; color: inherit; opacity: .7; padding: .7em 1.1em; font-size: 1em; cursor: pointer; border-bottom: 3px solid transparent; }
+        #YtDlpPage .md-tab:hover { opacity: 1; }
+        #YtDlpPage .md-tab.active { opacity: 1; border-bottom-color: #00a4dc; font-weight: bold; }
+        #YtDlpPage .md-panel { display: none; }
+        #YtDlpPage .md-panel.active { display: block; }
+        #YtDlpPage .md-card { padding: .8em; margin-bottom: .8em; border-radius: 6px; background: rgba(255,255,255,.06); }
+        #YtDlpPage .md-bar { height: 8px; background: rgba(255,255,255,.15); border-radius: 4px; margin-top: .4em; overflow: hidden; }
+        #YtDlpPage .md-bar > div { height: 8px; background: #00a4dc; }
+        #YtDlpPage table.md-table { width: 100%; border-collapse: collapse; font-size: .92em; }
+        #YtDlpPage table.md-table th, #YtDlpPage table.md-table td { text-align: left; padding: .45em .5em; border-bottom: 1px solid rgba(255,255,255,.08); vertical-align: top; }
+        #YtDlpPage table.md-table th { opacity: .75; font-weight: normal; white-space: nowrap; }
+        #YtDlpPage table.md-table td.num { text-align: right; white-space: nowrap; }
+        #YtDlpPage .md-row-tools { display: flex; flex-wrap: wrap; gap: .8em; align-items: flex-end; margin-bottom: 1em; }
+        #YtDlpPage .md-row-tools .selectContainer, #YtDlpPage .md-row-tools .inputContainer { margin: 0; min-width: 12em; }
+        #YtDlpPage .md-tablewrap { overflow-x: auto; }
+        #YtDlpPage a.md-link { color: #8fd3ff; }
+    </style>
+    <div data-role="content">
+        <div class="content-primary">
+            <h2 class="sectionTitle">Media Downloader</h2>
+
+            <div class="md-tabs" role="tablist">
+                <button type="button" class="md-tab" data-tab="download" role="tab">Download</button>
+                <button type="button" class="md-tab" data-tab="jobs" role="tab">Downloads <span id="mdJobCount"></span></button>
+                <button type="button" class="md-tab" data-tab="storage" role="tab">Storage</button>
+                <button type="button" class="md-tab" data-tab="settings" role="tab">Settings</button>
+            </div>
+
+            <!-- Download -->
+            <div class="md-panel" data-panel="download">
+                <div class="fieldDescription" style="margin-bottom:1em;">Downloads from YouTube and the other sites yt-dlp supports (<a class="md-link" href="https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md" target="_blank" rel="noopener">list of supported sites</a>). Paste a link: it is checked first.</div>
+                <form id="ytdlpDownloadForm">
+                    <div class="inputContainer">
+                        <input is="emby-input" type="url" id="ytdlpUrl" required label="Link to a video, playlist or channel page" placeholder="https://..." />
+                    </div>
+                    <div id="ytdlpCheck" style="margin:-.8em 0 1.2em 0;padding:.6em .8em;border-radius:4px;display:none;word-break:break-word;"></div>
+                    <div class="selectContainer">
+                        <select is="emby-select" id="ytdlpKind" label="Save as">
+                            <option value="Movie">Film: own folder "Title (Year)", poster, description</option>
+                            <option value="Episode">Series episode: Channel / Season YEAR / dated episode</option>
+                            <option value="Music">Music: audio only (M4A), Artist / Album</option>
+                            <option value="Video">Plain video file in the folder</option>
+                        </select>
+                    </div>
+                    <div class="selectContainer">
+                        <select is="emby-select" id="ytdlpFolder" label="Library folder"></select>
+                    </div>
+                    <div class="inputContainer">
+                        <input is="emby-input" type="text" id="ytdlpSubFolder" label="Sub folder inside it (optional)" placeholder="for example Downloads" />
+                    </div>
+                    <div class="selectContainer">
+                        <select is="emby-select" id="ytdlpHeight" label="Highest quality">
+                            <option value="0">Best available</option>
+                            <option value="2160">2160p (4K)</option>
+                            <option value="1440">1440p</option>
+                            <option value="1080">1080p (Full HD)</option>
+                            <option value="720">720p</option>
+                            <option value="480">480p</option>
+                        </select>
+                    </div>
+                    <div class="checkboxContainer">
+                        <label><input is="emby-checkbox" type="checkbox" id="ytdlpPlaylist" /><span>Whole playlist or channel (otherwise only the one video)</span></label>
+                    </div>
+                    <div class="checkboxContainer">
+                        <label><input is="emby-checkbox" type="checkbox" id="ytdlpSkip" checked /><span>Skip videos downloaded before</span></label>
+                    </div>
+                    <button is="emby-button" type="submit" class="raised button-submit block"><span>Download</span></button>
+                    <div id="ytdlpFormError" style="color:#e57373;margin-top:.5em;"></div>
+                </form>
+            </div>
+
+            <!-- Downloads -->
+            <div class="md-panel" data-panel="jobs">
+                <div style="margin-bottom:1em;">
+                    <button is="emby-button" type="button" id="ytdlpClear" class="raised"><span>Remove finished from the list</span></button>
+                </div>
+                <div id="ytdlpJobs"></div>
+            </div>
+
+            <!-- Storage -->
+            <div class="md-panel" data-panel="storage">
+                <div style="margin-bottom:1em;">
+                    <button is="emby-button" type="button" id="mdStorageRefresh" class="raised"><span>Refresh</span></button>
+                    <span id="mdStorageInfo" style="margin-left:1em;opacity:.8;"></span>
+                </div>
+                <div id="mdDrives"></div>
+                <h3 class="sectionTitle" style="margin-top:1.5em;">Library folders</h3>
+                <div class="md-tablewrap"><table class="md-table" id="mdFolders"></table></div>
+
+                <h3 class="sectionTitle" style="margin-top:1.5em;">Files, biggest first</h3>
+                <div class="md-row-tools">
+                    <div class="selectContainer">
+                        <select is="emby-select" id="mdFilterLib" label="Library"></select>
+                    </div>
+                    <div class="selectContainer">
+                        <select is="emby-select" id="mdFilterWatch" label="Show">
+                            <option value="all">All files</option>
+                            <option value="watched">Watched to the end</option>
+                            <option value="started">Started, not finished</option>
+                            <option value="unwatched">Not watched</option>
+                            <option value="unknown">Not in Jellyfin's library</option>
+                        </select>
+                    </div>
+                    <div class="inputContainer">
+                        <input is="emby-input" type="text" id="mdFilterText" label="Name contains" />
+                    </div>
+                </div>
+                <div style="margin-bottom:.8em;display:flex;flex-wrap:wrap;gap:.6em;align-items:center;">
+                    <button is="emby-button" type="button" id="mdSelectShown" class="raised"><span>Select all shown</span></button>
+                    <button is="emby-button" type="button" id="mdSelectNone" class="raised"><span>Select none</span></button>
+                    <button is="emby-button" type="button" id="mdDelete" class="raised" style="background:#c62828;color:#fff;"><span id="mdDeleteLabel">Delete selected</span></button>
+                </div>
+                <div id="mdDeleteResult" style="margin-bottom:.8em;"></div>
+                <div class="md-tablewrap"><table class="md-table" id="mdFiles"></table></div>
+            </div>
+
+            <!-- Settings -->
+            <div class="md-panel" data-panel="settings">
+                <h3 class="sectionTitle">yt-dlp and deno</h3>
+                <div id="ytdlpStatus" class="fieldDescription"></div>
+                <div style="margin:1em 0 2em 0;">
+                    <button is="emby-button" type="button" id="ytdlpUpdate" class="raised"><span>Update yt-dlp and deno now</span></button>
+                    <span id="ytdlpUpdateResult" style="margin-left:1em;"></span>
+                </div>
+                <form id="ytdlpSettingsForm">
+                    <div class="checkboxContainer">
+                        <label><input is="emby-checkbox" type="checkbox" id="cfgAutoUpdate" /><span>Update yt-dlp and deno every week (sites change often)</span></label>
+                    </div>
+                    <div class="checkboxContainer">
+                        <label><input is="emby-checkbox" type="checkbox" id="cfgTv" /><span>Prefer H.264 in MP4, which most TVs play without converting</span></label>
+                    </div>
+                    <div class="selectContainer">
+                        <select is="emby-select" id="cfgHeight" label="Default highest quality">
+                            <option value="0">Best available</option>
+                            <option value="2160">2160p (4K)</option>
+                            <option value="1440">1440p</option>
+                            <option value="1080">1080p (Full HD)</option>
+                            <option value="720">720p</option>
+                            <option value="480">480p</option>
+                        </select>
+                    </div>
+                    <div class="inputContainer">
+                        <input is="emby-input" type="text" id="cfgSubs" label="Subtitle languages (comma separated, empty for none)" placeholder="en,bn" />
+                    </div>
+                    <div class="checkboxContainer">
+                        <label><input is="emby-checkbox" type="checkbox" id="cfgNfo" /><span>Write title, description and date for Jellyfin (.nfo)</span></label>
+                    </div>
+                    <div class="checkboxContainer">
+                        <label><input is="emby-checkbox" type="checkbox" id="cfgScan" /><span>Scan the libraries after each download</span></label>
+                    </div>
+                    <div class="checkboxContainer">
+                        <label><input is="emby-checkbox" type="checkbox" id="cfgDeno" /><span>Use deno (JavaScript runtime; YouTube and some other sites need it for most qualities; the plugin downloads and updates it)</span></label>
+                    </div>
+                    <div class="inputContainer">
+                        <input is="emby-input" type="text" id="cfgClients" label="YouTube player types (only for YouTube; if it refuses with 403, try another, e.g. default,web_safari or default,mweb)" />
+                    </div>
+                    <div class="inputContainer">
+                        <input is="emby-input" type="text" id="cfgCustomPath" label="Use this yt-dlp program instead (optional, full path)" />
+                    </div>
+                    <div class="inputContainer">
+                        <textarea is="emby-textarea" id="cfgExtra" rows="3" label="Extra yt-dlp options, one per line (advanced)"></textarea>
+                    </div>
+                    <h3 class="sectionTitle" style="margin-top:2em;">People who may download</h3>
+                    <div class="fieldDescription" style="margin-bottom:1em;">Users who do not manage the server cannot open the dashboard. Allow them here, each limited to their own folders; they use the downloader at <a class="md-link" id="mdUserPageLink" href="#" target="_blank" rel="noopener"></a> (sign in with their Jellyfin account; bookmark it or add it to the phone's home screen). Administrators can use that page too, with every library folder.</div>
+                    <div class="fieldDescription" style="margin-bottom:1em;">Each folder must be a library folder or inside one (for example <code>C:\MOVIES\movies\Babui</code>); it is created on the first download. Give the user access to that library too (Dashboard &gt; Users &gt; the user &gt; Library access), so they can play what they download.</div>
+                    <div id="mdUsers"></div>
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label><input is="emby-checkbox" type="checkbox" id="cfgMenuLink" /><span>Show a link to the downloader page in Jellyfin's side menu</span></label>
+                        <div class="fieldDescription checkboxFieldDescription">Everyone sees it in the menu (&#9776;) of the Jellyfin web page and apps; people you did not allow are told so when they open it. Nothing in Jellyfin's own files changes, so the link stays after Jellyfin updates. After changing it, reload the Jellyfin page.</div>
+                    </div>
+                    <div class="inputContainer">
+                        <input is="emby-input" type="text" id="cfgMenuLinkName" label="Name of the menu link" />
+                    </div>
+                    <button is="emby-button" type="submit" class="raised button-submit block"><span>Save settings</span></button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>
