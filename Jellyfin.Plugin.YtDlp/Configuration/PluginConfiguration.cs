@@ -20,8 +20,6 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>Gets or sets a value indicating whether H.264 video in MP4 is preferred, which most TVs play without transcoding.</summary>
     public bool PreferTvCompatible { get; set; } = true;
 
-    /// <summary>Gets or sets the subtitle languages to fetch, comma separated (empty: none).</summary>
-    public string SubtitleLanguages { get; set; } = "en";
 
     /// <summary>Gets or sets a value indicating whether an .nfo file with title, description and date is written.</summary>
     public bool WriteNfo { get; set; } = true;

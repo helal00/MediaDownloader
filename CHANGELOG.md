@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.0.0
+- Subtitles are chosen for each download: **Download › Subtitles** (none, one or several languages from a full list, or any code typed in), remembered by the browser. The central **Settings › Subtitle languages** is removed.
+- The link check lists the languages the video has (from the uploader and automatic), and the picker shows them first.
+- A language the site refuses or does not have is skipped on its own and reported ("Subtitles skipped: ..."); the video and the other languages are still saved. The download also lists the subtitles saved.
+
 ## 1.6.1.0
 - When a site refuses the subtitles (YouTube's "HTTP Error 429: Too Many Requests"), the video is downloaded again without subtitles instead of failing; the download shows a yellow note. Subtitle requests are spaced 2 seconds apart.
 

@@ -94,7 +94,7 @@ public partial class DenoBinary
         {
             var client = _httpClientFactory.CreateClient();
             client.Timeout = TimeSpan.FromMinutes(10);
-            client.DefaultRequestHeaders.UserAgent.ParseAdd("Jellyfin-MediaDownloader-Plugin/1.6");
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("Jellyfin-MediaDownloader-Plugin/1.7");
 
             var sumText = await client.GetStringAsync(ReleaseBase + asset + ".sha256sum", cancellationToken).ConfigureAwait(false);
             var match = HashPattern().Match(sumText);

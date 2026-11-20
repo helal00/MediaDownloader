@@ -40,6 +40,22 @@ public class LinkCheck
 
     /// <summary>Gets or sets yt-dlp's site handlers whose name matches the link's site, to show which kinds of link it takes.</summary>
     public List<string> Handlers { get; set; } = new();
+
+    /// <summary>Gets or sets the subtitle languages the video offers (empty for playlists, whose videos are not read one by one).</summary>
+    public List<SubtitleChoice> Subtitles { get; set; } = new();
+}
+
+/// <summary>A subtitle language a video offers.</summary>
+public class SubtitleChoice
+{
+    /// <summary>Gets or sets yt-dlp's language code.</summary>
+    public string Code { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the site's name for the language (may be empty).</summary>
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets a value indicating whether the site makes them automatically (speech recognition or translation).</summary>
+    public bool Auto { get; set; }
 }
 
 /// <summary>
@@ -161,8 +177,16 @@ public class UrlChecker
             duration = d.GetDouble();
         }
 
+        var subtitles = new List<SubtitleChoice>();
+        if (!isPlaylist)
+        {
+            AddSubtitles(root, "subtitles", false, subtitles);
+            AddSubtitles(root, "automatic_captions", true, subtitles);
+        }
+
         return new LinkCheck
         {
+            Subtitles = subtitles,
             Result = string.Equals(site, "Generic", StringComparison.OrdinalIgnoreCase) ? "generic" : "supported",
             Site = site,
             Kind = isPlaylist ? "playlist" : "video",
@@ -171,6 +195,38 @@ public class UrlChecker
             Uploader = Get("channel").Length > 0 ? Get("channel") : Get("uploader"),
             Duration = duration
         };
+    }
+
+    private static void AddSubtitles(JsonElement root, string property, bool auto, List<SubtitleChoice> list)
+    {
+        if (!root.TryGetProperty(property, out var subs) || subs.ValueKind != JsonValueKind.Object)
+        {
+            return;
+        }
+
+        foreach (var lang in subs.EnumerateObject())
+        {
+            // live_chat is a chat replay, not subtitles; a language with real subtitles is not listed again as automatic.
+            if (lang.Name == "live_chat" || list.Any(c => string.Equals(c.Code, lang.Name, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            var name = string.Empty;
+            if (lang.Value.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var format in lang.Value.EnumerateArray())
+                {
+                    if (format.ValueKind == JsonValueKind.Object && format.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String)
+                    {
+                        name = n.GetString() ?? string.Empty;
+                        break;
+                    }
+                }
+            }
+
+            list.Add(new SubtitleChoice { Code = lang.Name, Name = name, Auto = auto });
+        }
     }
 
     private async Task<List<string>> HandlersForAsync(Uri uri, string program, CancellationToken cancellationToken)

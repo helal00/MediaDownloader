@@ -4,6 +4,31 @@ function api(path) {
     return ApiClient.getUrl('YtDlp/' + path);
 }
 
+// The subtitle picker is shared with the user page; it is loaded once from the plugin.
+let subsPicker = null;
+let subsLoading = null;
+
+function loadSubsScript() {
+    if (window.MediaDownloaderSubs) return Promise.resolve();
+    if (!subsLoading) {
+        subsLoading = new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = ApiClient.getUrl('MediaDownloader/subs.js');
+            s.onload = () => resolve();
+            s.onerror = () => {
+                subsLoading = null;
+                reject(new Error('The subtitle picker did not load.'));
+            };
+            document.head.appendChild(s);
+        });
+    }
+    return subsLoading;
+}
+
+function subName(code) {
+    return window.MediaDownloaderSubs ? window.MediaDownloaderSubs.label(code) : code;
+}
+
 async function errorText(err) {
     try {
         if (err && typeof err.json === 'function') {
@@ -124,6 +149,12 @@ function renderJobs(view, jobs) {
         }
         if (job.Error) {
             card.appendChild(el('div', job.Error, (job.State === 'Done' ? 'color:#ffd54f' : 'color:#e57373') + ';margin-top:.3em;word-break:break-word'));
+        }
+        if (job.SubtitlesSaved && job.SubtitlesSaved.length) {
+            card.appendChild(el('div', 'Subtitles saved: ' + job.SubtitlesSaved.map(subName).join(', '), 'font-size:.9em;opacity:.8;margin-top:.3em'));
+        }
+        if (job.Warning) {
+            card.appendChild(el('div', job.Warning, 'color:#ffd54f;margin-top:.3em;word-break:break-word'));
         }
         if (job.State === 'Failed' && job.Log && job.Log.length) {
             const details = el('details', null, 'margin-top:.3em');
@@ -439,6 +470,7 @@ function showCheck(view, kind, parts) {
 function checkLink(view) {
     const url = view.querySelector('#ytdlpUrl').value.trim();
     const seq = ++checkSeq;
+    if (subsPicker) subsPicker.clearAvailable();
     if (!/^https?:\/\/\S+$/i.test(url)) {
         showCheck(view, url ? 'bad' : null, [el('div', 'Paste a full link starting with https://')]);
         return;
@@ -460,6 +492,7 @@ function checkLink(view) {
                 if (r.Uploader) line += ' \u2013 ' + r.Uploader;
                 if (r.Duration) line += ' (' + fmtDuration(r.Duration) + ')';
                 parts.push(el('div', line));
+                if (subsPicker) subsPicker.setAvailable(r.Subtitles || []);
             }
             showCheck(view, r.Result === 'supported' ? 'ok' : 'warn', parts);
             return;
@@ -647,7 +680,6 @@ function loadSettings(view) {
         view.querySelector('#cfgTv').checked = c.PreferTvCompatible;
         view.querySelector('#cfgHeight').value = String(c.DefaultMaxHeight);
         view.querySelector('#ytdlpHeight').value = String(c.DefaultMaxHeight);
-        view.querySelector('#cfgSubs').value = c.SubtitleLanguages || '';
         view.querySelector('#cfgNfo').checked = c.WriteNfo;
         view.querySelector('#cfgScan').checked = c.ScanAfterDownload;
         view.querySelector('#cfgCustomPath').value = c.CustomYtDlpPath || '';
@@ -688,7 +720,21 @@ export default function (view) {
     });
     view.querySelector('#mdDelete').addEventListener('click', () => deleteSelected(view));
 
-    view.querySelector('#ytdlpKind').addEventListener('change', () => pickFolderForKind(view));
+    const showSubs = () => {
+        if (subsPicker) subsPicker.setVisible(view.querySelector('#ytdlpKind').value !== 'Music');
+    };
+    view.querySelector('#ytdlpKind').addEventListener('change', () => {
+        pickFolderForKind(view);
+        showSubs();
+    });
+    loadSubsScript().then(() => {
+        const box = view.querySelector('#ytdlpSubsPicker');
+        box.textContent = '';
+        subsPicker = window.MediaDownloaderSubs.create(box, { storageKey: 'mediaDownloaderSubtitles' });
+        showSubs();
+    }).catch((err) => {
+        view.querySelector('#ytdlpSubsPicker').textContent = err.message;
+    });
 
     const urlInput = view.querySelector('#ytdlpUrl');
     urlInput.addEventListener('input', () => {
@@ -707,12 +753,14 @@ export default function (view) {
             SubFolder: view.querySelector('#ytdlpSubFolder').value.trim(),
             MaxHeight: parseInt(view.querySelector('#ytdlpHeight').value, 10) || 0,
             WholePlaylist: view.querySelector('#ytdlpPlaylist').checked,
-            SkipDownloaded: view.querySelector('#ytdlpSkip').checked
+            SkipDownloaded: view.querySelector('#ytdlpSkip').checked,
+            Subtitles: view.querySelector('#ytdlpKind').value === 'Music' || !subsPicker ? [] : subsPicker.get()
         };
         post('Jobs', request).then(() => {
             view.querySelector('#ytdlpUrl').value = '';
             checkSeq++;
             showCheck(view, null, []);
+            if (subsPicker) subsPicker.clearAvailable();
             refreshJobs(view);
             showTab(view, 'jobs');
         }).catch(async (err) => {
@@ -741,7 +789,6 @@ export default function (view) {
             c.AutoUpdate = view.querySelector('#cfgAutoUpdate').checked;
             c.PreferTvCompatible = view.querySelector('#cfgTv').checked;
             c.DefaultMaxHeight = parseInt(view.querySelector('#cfgHeight').value, 10) || 0;
-            c.SubtitleLanguages = view.querySelector('#cfgSubs').value.trim();
             c.WriteNfo = view.querySelector('#cfgNfo').checked;
             c.ScanAfterDownload = view.querySelector('#cfgScan').checked;
             c.CustomYtDlpPath = view.querySelector('#cfgCustomPath').value.trim();

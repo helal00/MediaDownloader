@@ -67,6 +67,13 @@ public class MediaDownloaderController : ControllerBase
     [Produces("application/javascript")]
     public ActionResult Script() => Resource("user.js", "application/javascript; charset=utf-8");
 
+    /// <summary>The subtitle language picker, used by this page and the dashboard page.</summary>
+    /// <returns>The script.</returns>
+    [HttpGet("subs.js")]
+    [AllowAnonymous]
+    [Produces("application/javascript")]
+    public ActionResult SubtitlesScript() => Resource("subs.js", "application/javascript; charset=utf-8");
+
     /// <summary>Who is signed in, and what they may use.</summary>
     /// <returns>The access.</returns>
     [HttpGet("Me")]

@@ -1,7 +1,7 @@
 (function () {
     'use strict';
 
-    const VERSION = '1.6.1';
+    const VERSION = '1.7.0';
     const base = location.pathname.replace(/\/MediaDownloader\/?$/i, '');
     let token = '';
     let me = null;
@@ -290,9 +290,15 @@
     let checkSeq = 0;
     let checkTimer = null;
 
+    const subs = window.MediaDownloaderSubs.create($('subsPicker'), { storageKey: 'mediaDownloaderSubtitles' });
+    const showSubs = () => subs.setVisible($('kind').value !== 'Music');
+    $('kind').addEventListener('change', showSubs);
+    showSubs();
+
     async function checkLink() {
         const url = $('url').value.trim();
         const seq = ++checkSeq;
+        subs.clearAvailable();
         if (!/^https?:\/\/\S+$/i.test(url)) {
             showCheck(url ? 'bad' : null, [el('div', 'Paste a full link starting with https://')]);
             return;
@@ -312,6 +318,7 @@
                     if (r.Uploader) line += ' – ' + r.Uploader;
                     if (r.Duration) line += ' (' + fmtDuration(r.Duration) + ')';
                     parts.push(el('div', line));
+                    subs.setAvailable(r.Subtitles || []);
                 }
                 showCheck(r.Result === 'supported' ? 'ok' : 'warn', parts);
                 return;
@@ -352,13 +359,15 @@
             SubFolder: $('subFolder').value.trim(),
             MaxHeight: parseInt($('height').value, 10) || 0,
             WholePlaylist: $('playlist').checked,
-            SkipDownloaded: $('skip').checked
+            SkipDownloaded: $('skip').checked,
+            Subtitles: $('kind').value === 'Music' ? [] : subs.get()
         };
         try {
             await request('POST', api('Jobs'), body);
             $('url').value = '';
             checkSeq++;
             showCheck(null, []);
+            subs.clearAvailable();
             await refreshJobs();
             showTab('jobs');
         } catch (err) {
@@ -446,6 +455,8 @@
             }
             if (waiting) lookupItems(job);
             if (job.Error) card.appendChild(el('div', job.Error, 'color:var(--' + (job.State === 'Done' ? 'warn' : 'bad') + ');margin-top:.3em;word-break:break-word'));
+            if (job.SubtitlesSaved && job.SubtitlesSaved.length) card.appendChild(el('div', 'Subtitles saved: ' + job.SubtitlesSaved.map(window.MediaDownloaderSubs.label).join(', '), 'font-size:.9em;opacity:.8;margin-top:.3em'));
+            if (job.Warning) card.appendChild(el('div', job.Warning, 'color:var(--warn);margin-top:.3em;word-break:break-word'));
             box.appendChild(card);
         }
     }

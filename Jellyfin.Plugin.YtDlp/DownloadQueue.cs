@@ -9,6 +9,7 @@ using System.Net.Http;
 using System.Security;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using MediaBrowser.Controller.Library;
@@ -75,6 +76,123 @@ public class DownloadRequest
 
     /// <summary>Gets or sets a value indicating whether videos downloaded before are skipped.</summary>
     public bool SkipDownloaded { get; set; } = true;
+
+    /// <summary>Gets or sets the subtitle languages to save, as yt-dlp's language codes (for example "en", "bn", "pt-BR"); empty for none.</summary>
+    public List<string> Subtitles { get; set; } = new();
+}
+
+/// <summary>What happened to the subtitles of a download, counted per language.</summary>
+public class SubtitleTally
+{
+    private static readonly Regex Offered = new(@"^\[info\] .+?: Downloading subtitles: (.+)$", RegexOptions.Compiled);
+    private static readonly Regex Written = new(@"^\[info\] Writing video subtitles to: (.+)$", RegexOptions.Compiled);
+    private static readonly Regex Present = new(@"^\[info\] Video subtitle (.+)\.[^.]+ is already present$", RegexOptions.Compiled);
+    private static readonly Regex Refused = new(@"Unable to download video subtitles for '(.+?)': (.+)$", RegexOptions.Compiled);
+
+    private readonly object _lock = new();
+    private readonly Dictionary<string, int> _offered = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> _saved = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> _refused = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _reason = new(StringComparer.OrdinalIgnoreCase);
+    private int _videos;
+
+    /// <summary>Counts a video that is being downloaded.</summary>
+    public void AddVideo()
+    {
+        lock (_lock)
+        {
+            _videos++;
+        }
+    }
+
+    /// <summary>Reads one line of yt-dlp's output.</summary>
+    /// <param name="line">The line.</param>
+    public void Read(string line)
+    {
+        lock (_lock)
+        {
+            Match m;
+            if ((m = Offered.Match(line)).Success)
+            {
+                foreach (var lang in m.Groups[1].Value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                {
+                    _offered[lang] = _offered.GetValueOrDefault(lang) + 1;
+                }
+            }
+            else if ((m = Written.Match(line)).Success)
+            {
+                // The file is "<name>.<language>.<format>".
+                var name = Path.GetFileNameWithoutExtension(m.Groups[1].Value.Trim());
+                var lang = Path.GetExtension(name).TrimStart('.');
+                if (lang.Length > 0)
+                {
+                    _saved[lang] = _saved.GetValueOrDefault(lang) + 1;
+                }
+            }
+            else if ((m = Present.Match(line)).Success)
+            {
+                _saved[m.Groups[1].Value] = _saved.GetValueOrDefault(m.Groups[1].Value) + 1;
+            }
+            else if ((m = Refused.Match(line)).Success)
+            {
+                var lang = m.Groups[1].Value;
+                _refused[lang] = _refused.GetValueOrDefault(lang) + 1;
+                _saved[lang] = Math.Max(0, _saved.GetValueOrDefault(lang) - 1);
+                var reason = m.Groups[2].Value.Trim();
+                _reason[lang] = reason.Length > 120 ? reason[..120] + "..." : reason;
+            }
+        }
+    }
+
+    /// <summary>Gets the languages saved for at least one video.</summary>
+    /// <param name="requested">The languages asked for, in the user's order.</param>
+    /// <returns>The languages.</returns>
+    public List<string> SavedLanguages(IReadOnlyList<string> requested)
+    {
+        lock (_lock)
+        {
+            return requested.Where(l => _saved.GetValueOrDefault(l) > 0).ToList();
+        }
+    }
+
+    /// <summary>Describes the languages that were skipped, or gives an empty text when none were.</summary>
+    /// <param name="requested">The languages asked for, in the user's order.</param>
+    /// <returns>The text.</returns>
+    public string SkippedText(IReadOnlyList<string> requested)
+    {
+        lock (_lock)
+        {
+            if (_videos == 0)
+            {
+                return string.Empty;
+            }
+
+            var many = _videos > 1;
+            string Count(int n) => many ? $" for {n} of {_videos} videos" : string.Empty;
+            var parts = new List<string>();
+            foreach (var lang in requested)
+            {
+                var refused = _refused.GetValueOrDefault(lang);
+                if (refused > 0)
+                {
+                    parts.Add($"{lang} refused by the site{Count(refused)} ({_reason.GetValueOrDefault(lang)})");
+                }
+
+                var missing = Math.Max(0, _videos - _offered.GetValueOrDefault(lang));
+                if (missing > 0)
+                {
+                    parts.Add($"{lang} not offered{(many ? Count(missing) : " for this video")}");
+                }
+            }
+
+            if (parts.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            return "Subtitles skipped: " + string.Join("; ", parts) + ". " + (many ? "The videos were saved." : "The video was saved.");
+        }
+    }
 }
 
 /// <summary>A download and its progress.</summary>
@@ -107,8 +225,15 @@ public class DownloadJob
     /// <summary>Gets or sets the error.</summary>
     public string Error { get; set; } = string.Empty;
 
-    /// <summary>Gets or sets a note about a finished download that worked only in part (for example without subtitles).</summary>
+    /// <summary>Gets or sets a note about a finished download that worked only in part (for example subtitles skipped).</summary>
     public string Warning { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the subtitle languages that were saved.</summary>
+    public List<string> SubtitlesSaved { get; set; } = new();
+
+    /// <summary>Gets the subtitle counts (not sent to the page).</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public SubtitleTally SubtitleTally { get; } = new();
 
     /// <summary>Gets the last lines of yt-dlp's output.</summary>
     public List<string> Log { get; } = new();
@@ -141,6 +266,8 @@ public class DownloadQueue
 {
     private const int MaxJobs = 100;
     private const int MaxLogLines = 40;
+    private const int MaxSubtitleLanguages = 20;
+    private static readonly Regex LanguageCode = new(@"^[A-Za-z0-9][A-Za-z0-9_-]{0,34}$", RegexOptions.Compiled);
 
     private readonly ConcurrentQueue<DownloadJob> _pending = new();
     private readonly List<DownloadJob> _jobs = new();
@@ -209,6 +336,7 @@ public class DownloadQueue
         }
 
         request.Url = uri.ToString();
+        request.Subtitles = request.Kind == DownloadKind.Music ? new List<string>() : CleanSubtitles(request.Subtitles);
         request.TargetFolder = ResolveTarget(request.TargetFolder, request.SubFolder);
 
         var job = new DownloadJob { Request = request, OwnerId = ownerId, OwnerName = ownerName };
@@ -405,20 +533,11 @@ public class DownloadQueue
         Directory.CreateDirectory(job.Request.TargetFolder);
         CheckWritable(job.Request.TargetFolder);
 
-        var exitCode = await RunYtDlpAsync(job, program, config, deno, true).ConfigureAwait(false);
-
-        // Sites (YouTube above all) often refuse subtitles with "429 Too Many Requests", and yt-dlp then fails the
-        // whole video. The video matters more than its subtitles: try once more without them.
-        if (exitCode != 0 && !job.CancelRequested && SubtitlesFailed(job) && HasSubtitles(job.Request, config))
+        var exitCode = await RunYtDlpAsync(job, program, config, deno).ConfigureAwait(false);
+        if (job.Request.Subtitles.Count > 0)
         {
-            AddLog(job, "WARNING: the site refused the subtitles; downloading again without subtitles.");
-            _logger.LogInformation("yt-dlp: subtitles refused for {Url}; retrying without subtitles", job.Request.Url);
-            job.Percent = 0;
-            exitCode = await RunYtDlpAsync(job, program, config, deno, false).ConfigureAwait(false);
-            if (exitCode == 0)
-            {
-                job.Warning = "Saved without subtitles: the site refused them (too many requests). Try again later for subtitles.";
-            }
+            job.SubtitlesSaved = job.SubtitleTally.SavedLanguages(job.Request.Subtitles);
+            job.Warning = job.SubtitleTally.SkippedText(job.Request.Subtitles);
         }
 
         foreach (var file in job.Files.ToList())
@@ -444,10 +563,6 @@ public class DownloadQueue
             {
                 job.Error = "Nothing new to download (already downloaded before).";
             }
-            else if (job.Warning.Length > 0)
-            {
-                job.Error = job.Warning;
-            }
         }
         else
         {
@@ -465,7 +580,7 @@ public class DownloadQueue
         }
     }
 
-    private async Task<int> RunYtDlpAsync(DownloadJob job, string program, Configuration.PluginConfiguration config, string? deno, bool subtitles)
+    private async Task<int> RunYtDlpAsync(DownloadJob job, string program, Configuration.PluginConfiguration config, string? deno)
     {
         var psi = new ProcessStartInfo(program)
         {
@@ -477,12 +592,12 @@ public class DownloadQueue
             StandardErrorEncoding = Encoding.UTF8
         };
         psi.Environment["PYTHONIOENCODING"] = "utf-8";
-        foreach (var arg in BuildArguments(job.Request, config, deno, subtitles))
+        foreach (var arg in BuildArguments(job.Request, config, deno))
         {
             psi.ArgumentList.Add(arg);
         }
 
-        _logger.LogInformation("yt-dlp: {Url} -> {Folder} ({Kind}{Subs})", job.Request.Url, job.Request.TargetFolder, job.Request.Kind, subtitles ? string.Empty : ", no subtitles");
+        _logger.LogInformation("yt-dlp: {Url} -> {Folder} ({Kind}, subtitles: {Subs})", job.Request.Url, job.Request.TargetFolder, job.Request.Kind, job.Request.Subtitles.Count > 0 ? string.Join(",", job.Request.Subtitles) : "none");
         using var process = Process.Start(psi) ?? throw new InvalidOperationException("yt-dlp did not start");
         job.Process = process;
         if (job.CancelRequested)
@@ -498,17 +613,39 @@ public class DownloadQueue
         return process.ExitCode;
     }
 
-    private static bool SubtitlesFailed(DownloadJob job)
+    /// <summary>Checks and tidies the subtitle languages of a request.</summary>
+    /// <param name="languages">The languages from the page.</param>
+    /// <returns>The languages, without repeats.</returns>
+    public static List<string> CleanSubtitles(IEnumerable<string>? languages)
     {
-        lock (job.Log)
+        var result = new List<string>();
+        foreach (var raw in languages ?? Enumerable.Empty<string>())
         {
-            return job.Log.Any(l => l.Contains("ERROR", StringComparison.Ordinal)
-                && l.Contains("subtitles", StringComparison.OrdinalIgnoreCase));
-        }
-    }
+            var lang = (raw ?? string.Empty).Trim();
+            if (lang.Length == 0)
+            {
+                continue;
+            }
 
-    private static bool HasSubtitles(DownloadRequest request, Configuration.PluginConfiguration config) =>
-        request.Kind != DownloadKind.Music && (config.SubtitleLanguages ?? string.Empty).Trim().Length > 0;
+            // yt-dlp reads each one as a pattern, so only plain language codes are let through.
+            if (!LanguageCode.IsMatch(lang))
+            {
+                throw new ArgumentException($"\"{lang}\" is not a subtitle language code (for example en, bn or pt-BR).");
+            }
+
+            if (!result.Contains(lang, StringComparer.OrdinalIgnoreCase))
+            {
+                result.Add(lang);
+            }
+        }
+
+        if (result.Count > MaxSubtitleLanguages)
+        {
+            throw new ArgumentException($"Choose at most {MaxSubtitleLanguages} subtitle languages.");
+        }
+
+        return result;
+    }
 
     private static void CheckWritable(string folder)
     {
@@ -525,7 +662,7 @@ public class DownloadQueue
         }
     }
 
-    private List<string> BuildArguments(DownloadRequest request, Configuration.PluginConfiguration config, string? deno, bool subtitles)
+    private List<string> BuildArguments(DownloadRequest request, Configuration.PluginConfiguration config, string? deno)
     {
         var data = YtDlpBinary.DataFolder;
         var args = new List<string>
@@ -582,18 +719,18 @@ public class DownloadQueue
                 AddVideoFormat(args, request.MaxHeight, config);
                 var episode = Channel + "/Season " + Year + "/" + Channel + " - %(upload_date>%Y-%m-%d|0000-00-00)s - %(title).120B";
                 args.AddRange(new[] { "-o", episode + ".%(ext)s", "-o", "thumbnail:" + episode + "-thumb.%(ext)s" });
-                AddThumbnailAndSubs(args, config, subtitles);
+                AddThumbnailAndSubs(args, request.Subtitles);
                 break;
             case DownloadKind.Video:
                 AddVideoFormat(args, request.MaxHeight, config);
                 args.AddRange(new[] { "-o", Title + ".%(ext)s", "-o", "thumbnail:" + Title + "-poster.%(ext)s" });
-                AddThumbnailAndSubs(args, config, subtitles);
+                AddThumbnailAndSubs(args, request.Subtitles);
                 break;
             default:
                 AddVideoFormat(args, request.MaxHeight, config);
                 var movie = Title + " (" + Year + ")";
                 args.AddRange(new[] { "-o", movie + "/" + movie + ".%(ext)s", "-o", "thumbnail:" + movie + "/poster.%(ext)s" });
-                AddThumbnailAndSubs(args, config, subtitles);
+                AddThumbnailAndSubs(args, request.Subtitles);
                 break;
         }
 
@@ -624,14 +761,16 @@ public class DownloadQueue
         }
     }
 
-    private static void AddThumbnailAndSubs(List<string> args, Configuration.PluginConfiguration config, bool subtitles)
+    private static void AddThumbnailAndSubs(List<string> args, List<string> subtitles)
     {
         args.AddRange(new[] { "--write-thumbnail", "--convert-thumbnails", "jpg" });
-        var langs = (config.SubtitleLanguages ?? string.Empty).Trim();
-        if (subtitles && langs.Length > 0)
+        if (subtitles.Count > 0)
         {
-            // A short pause before each subtitle request makes "429 Too Many Requests" less likely.
-            args.AddRange(new[] { "--write-subs", "--write-auto-subs", "--sub-langs", langs, "--convert-subs", "srt", "--sleep-subtitles", "2" });
+            // Each language goes as a whole-name pattern. A short pause before each subtitle request makes
+            // "429 Too Many Requests" less likely; --ignore-errors makes a refused subtitle a warning, so the video
+            // and the other languages are still saved (other failures still end yt-dlp with an error code).
+            var langs = string.Join(",", subtitles.Select(Regex.Escape));
+            args.AddRange(new[] { "--write-subs", "--write-auto-subs", "--sub-langs", langs, "--convert-subs", "srt", "--sleep-subtitles", "2", "--ignore-errors" });
         }
     }
 
@@ -659,6 +798,7 @@ public class DownloadQueue
 
             if (line.StartsWith("YTDLP_TITLE ", StringComparison.Ordinal))
             {
+                job.SubtitleTally.AddVideo();
                 job.Title = line.Substring(12).Trim();
                 job.Percent = 0;
                 continue;
@@ -674,6 +814,7 @@ public class DownloadQueue
                 continue;
             }
 
+            job.SubtitleTally.Read(line);
             AddLog(job, line);
         }
     }

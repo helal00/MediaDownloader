@@ -13,8 +13,9 @@ There are two pages:
    - **Series episode**: `Channel / Season YEAR / dated episode`, for a Shows library.
    - **Music**: audio only (M4A) in `Artist / Album`, for a Music library.
    - **Plain video**: the file only, for a Mixed/Home videos library.
-3. Choose the folder (and optionally a new sub folder name, made if it is not there), the highest quality, and whether to take the whole playlist or channel. **Skip videos downloaded before** avoids downloading the same video twice into that folder.
-4. **Download**. The Downloads tab shows progress; when Jellyfin has added the file, **Open in Jellyfin to play** appears.
+3. **Subtitles** (not for Music): choose none, one or several languages. **Choose...** opens the full list; type to find a language, or type a code the list does not have (for example `pt-BR`). When you paste a link to one video, the list first shows the languages that video has: from the uploader, and automatic ones (machine-made, often translated). A chosen language the video does not have is marked "not on this video". Your choice is remembered by the browser for the next download. A language the site refuses (for example YouTube's "429 Too Many Requests") or does not have is skipped: the video is still saved, and the download says which subtitles were saved and which were skipped.
+4. Choose the folder (and optionally a new sub folder name, made if it is not there), the highest quality, and whether to take the whole playlist or channel. **Skip videos downloaded before** avoids downloading the same video twice into that folder.
+5. **Download**. The Downloads tab shows progress; when Jellyfin has added the file, **Open in Jellyfin to play** appears.
 
 Downloads run one at a time, in order. Cancelling stops the current one and removes its partial files.
 
@@ -42,7 +43,6 @@ The user's own top folder cannot be renamed, moved or deleted here. A folder tha
 | Update yt-dlp and deno every week | Sites change often; old yt-dlp versions stop working. **Update yt-dlp and deno now** does it at once. |
 | Prefer H.264 in MP4 | Most TVs play it without Jellyfin converting it. |
 | Default highest quality | Preselected on the Download tabs. |
-| Subtitle languages | Comma separated (for example `en,bn`); empty for none. |
 | Write title, description and date (.nfo) | Jellyfin reads them for the item's details. |
 | Scan the libraries after each download | So the download appears in Jellyfin straight away. |
 | Use deno | YouTube and some other sites need a JavaScript runtime for most qualities. |

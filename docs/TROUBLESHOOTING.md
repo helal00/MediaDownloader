@@ -22,9 +22,9 @@ Start-Service JellyfinServer
 - Make sure **Use deno** is on.
 - Sites that need an account, age checks or a subscription may not work.
 
-## "Saved without subtitles" or "HTTP Error 429: Too Many Requests"
+## "Subtitles skipped" or "HTTP Error 429: Too Many Requests"
 
-The site (usually YouTube) refused the subtitles because too many were asked for in a short time. Since 1.6.1 the video is then downloaded without subtitles and the download shows a yellow note. To get subtitles, try again later, or clear **Settings › Subtitle languages** if you do not need them.
+The site (usually YouTube) refused the subtitles because too many were asked for in a short time, or the video does not have the chosen language. Since 1.7.0 each language is skipped on its own: the video and the other languages are still saved, and the download says what was skipped ("refused by the site" or "not offered"). To get refused subtitles, download the video again later (with **Skip videos downloaded before** off). YouTube's refusals usually pass after some hours. Choose fewer languages, or none, under **Download › Subtitles** if you do not need them.
 
 ## "Jellyfin's service account could not ..." when downloading, deleting or moving
 

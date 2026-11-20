@@ -59,6 +59,7 @@
                     <div class="inputContainer">
                         <input is="emby-input" type="text" id="ytdlpSubFolder" label="Sub folder inside it (optional)" placeholder="for example Downloads" />
                     </div>
+                    <div id="ytdlpSubsPicker"></div>
                     <div class="selectContainer">
                         <select is="emby-select" id="ytdlpHeight" label="Highest quality">
                             <option value="0">Best available</option>
@@ -149,9 +150,6 @@
                             <option value="720">720p</option>
                             <option value="480">480p</option>
                         </select>
-                    </div>
-                    <div class="inputContainer">
-                        <input is="emby-input" type="text" id="cfgSubs" label="Subtitle languages (comma separated, empty for none)" placeholder="en,bn" />
                     </div>
                     <div class="checkboxContainer">
                         <label><input is="emby-checkbox" type="checkbox" id="cfgNfo" /><span>Write title, description and date for Jellyfin (.nfo)</span></label>
